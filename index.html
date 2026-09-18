@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Duck Roll</title>
+
+<style>
+*{box-sizing:border-box}
+html,body{
+ margin:0;width:100%;height:100%;overflow:hidden;
+ background:#8edfff;
+ font-family:Arial,sans-serif;
+ touch-action:none;
+}
+canvas{display:block;width:100%;height:100%}
+
+button{
+ border:0;border-radius:14px;
+ padding:13px 24px;margin:7px;
+ font-size:18px;font-weight:bold;
+ background:white;
+ box-shadow:0 4px 0 #777;
+}
+
+#menu{
+ position:fixed;inset:0;
+ display:flex;flex-direction:column;
+ align-items:center;justify-content:center;
+ text-align:center;
+ background:linear-gradient(#78d9ff,#e5faff);
+}
+
+#menu h1{
+ font-size:48px;margin:5px 0 20px;
+ color:#18384c;
+ text-shadow:3px 3px white;
+}
+
+.duck{
+ font-size:105px;
+ margin-bottom:5px;
+}
+
+.panel{display:none;flex-direction:column;align-items:center}
+
+#hud{
+ position:fixed;
+ top:10px;left:10px;right:10px;
+ display:none;
+ justify-content:space-between;
+ align-items:center;
+ font-weight:bold;
+ font-size:20px;
+ color:#17384c;
+}
+
+#pause{
+ margin:0;
+ padding:8px 14px;
+ font-size:20px;
+}
+
+#controls{
+ position:fixed;
+ left:0;right:0;bottom:0;
+ height:30%;
+ display:none;
+ justify-content:space-between;
+ pointer-events:none;
+}
+
+.ctrl{
+ width:35%;
+ height:100%;
+ margin:0;
+ border-radius:0;
+ background:rgba(255,255,255,.08);
+ box-shadow:none;
+ pointer-events:auto;
+}
+
+.overlay{
+ position:fixed;inset:0;
+ display:none;
+ align-items:center;
+ justify-content:center;
+ background:rgba(0,0,0,.4);
+}
+
+.card{
+ background:#f7ffff;
+ padding:25px;
+ border-radius:20px;
+ text-align:center;
+ min-width:270px;
+ box-shadow:0 8px 25px #0006;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- MAIN MENU -->
+<div id="menu">
+
+ <div class="duck">🦆</div>
+ <h1>DUCK ROLL</h1>
+
+ <div id="mainPanel">
+  <button onclick="startGame()">PLAY</button>
+  <button onclick="showSettings()">SETTINGS</button>
+  <button onclick="showScore()">HIGH SCORE</button>
+ </div>
+
+ <div id="settings" class="panel">
+  <h2>DIFFICULTY</h2>
+  <button onclick="setDifficulty('easy')">EASY</button>
+  <button onclick="setDifficulty('medium')">MEDIUM</button>
+  <button onclick="setDifficulty('hard')">HARD</button>
+  <button onclick="backMenu()">BACK</button>
+ </div>
+
+ <div id="score" class="panel">
+  <h2>HIGH SCORE</h2>
+  <div id="highScore" style="font-size:45px;font-weight:bold">0</div>
+  <button onclick="backMenu()">BACK</button>
+ </div>
+
+</div>
+
+<!-- HUD -->
+<div id="hud">
+ <span id="health">♥ ♥ ♥</span>
+ <span id="scoreText">Score: 0</span>
+ <button id="pause" onclick="pauseGame()">Ⅱ</button>
+</div>
+
+<!-- TOUCH CONTROLS -->
+<div id="controls">
+ <button class="ctrl" id="left"></button>
+ <button class="ctrl" id="right"></button>
+</div>
+
+<!-- PAUSE -->
+<div id="pauseScreen" class="overlay">
+ <div class="card">
+  <h2>PAUSED</h2>
+  <button onclick="resumeGame()">CONTINUE</button>
+  <button onclick="goMenu()">GO TO MENU</button>
+ </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameOver" class="overlay">
+ <div class="card">
+  <h2>GAME OVER</h2>
+  <p id="finalScore"></p>
+  <button onclick="startGame()">NEXT GAME</button>
+  <button onclick="goMenu()">GO TO MENU</button>
+ </div>
+</div>
+
+
+<script>
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+let W,H;
+let player;
+let platforms=[];
+let hearts=[];
+
+let running=false;
+let paused=false;
+
+let health=3;
+let score=0;
+
+let highScore=
+ Number(localStorage.getItem("duckHighScore"))||0;
+
+let difficulty=
+ localStorage.getItem("duckDifficulty")||"easy";
+
+let speed=2;
+
+const keys={
+ left:false,
+ right:false
+};
+
+
+function resize(){
+
+ W=innerWidth;
+ H=innerHeight;
+
+ const dpr=Math.min(devicePixelRatio||1,2);
+
+ canvas.width=W*dpr;
+ canvas.height=H*dpr;
+
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+addEventListener("resize",resize);
+resize();
+
+
+/* DIFFICULTY */
+
+function setDifficulty(d){
+
+ difficulty=d;
+
+ if(d==="easy") speed=2;
+ if(d==="medium") speed=3;
+ if(d==="hard") speed=4;
+
+ localStorage.setItem("duckDifficulty",d);
+
+ backMenu();
+}
+
+setDifficulty(difficulty);
+
+
+/* MENU */
+
+function showSettings(){
+
+ document.getElementById("mainPanel").style.display="none";
+ document.getElementById("settings").style.display="flex";
+ document.getElementById("score").style.display="none";
+}
+
+
+function showScore(){
+
+ document.getElementById("mainPanel").style.display="none";
+ document.getElementById("settings").style.display="none";
+ document.getElementById("score").style.display="flex";
+
+ document.getElementById("highScore").textContent=highScore;
+}
+
+
+function backMenu(){
+
+ document.getElementById("mainPanel").style.display="block";
+ document.getElementById("settings").style.display="none";
+ document.getElementById("score").style.display="none";
+}
+
+
+/* START GAME */
+
+function startGame(){
+
+ document.getElementById("menu").style.display="none";
+
+ document.getElementById("hud").style.display="flex";
+ document.getElementById("controls").style.display="flex";
+
+ document.getElementById("gameOver").style.display="none";
+ document.getElementById("pauseScreen").style.display="none";
+
+ health=3;
+ score=0;
+
+ running=true;
+ paused=false;
+
+ player={
+  x:W/2,
+  y:H*0.65,
+  r:22,
+  vx:0,
+  vy:0
+ };
+
+ platforms=[];
+ hearts=[];
+
+ /* starting platforms */
+
+ for(let i=0;i<15;i++){
+  createPlatform(H-40-i*95);
+ }
+
+ updateHUD();
+
+ requestAnimationFrame(loop);
+}
+
+
+/* CREATE PLATFORM */
+
+function createPlatform(y){
+
+ let width=100+Math.random()*90;
+
+ let x=
+  20+Math.random()*(W-width-40);
+
+ let spike=Math.random()<0.25;
+
+ platforms.push({
+  x:x,
+  y:y,
+  w:width,
+  h:15,
+  spike:spike,
+  damaged:false
+ });
+
+ /* health pickup */
+
+ if(Math.random()<0.20){
+
+  hearts.push({
+   x:x+width/2,
+   y:y-28,
+   r:11
+  });
+
+ }
+}
+
+
+/* HUD */
+
+function updateHUD(){
+
+ let h="";
+
+ for(let i=0;i<health;i++)
+  h+="♥ ";
+
+ document.getElementById("health").textContent=h.trim();
+
+ document.getElementById("scoreText").textContent=
+  "Score: "+score;
+}
+
+
+/* PAUSE */
+
+function pauseGame(){
+
+ if(!running)return;
+
+ paused=true;
+
+ document.getElementById("pauseScreen").style.display="flex";
+}
+
+
+function resumeGame(){
+
+ paused=false;
+
+ document.getElementById("pauseScreen").style.display="none";
+}
+
+
+function goMenu(){
+
+ running=false;
+ paused=false;
+
+ document.getElementById("pauseScreen").style.display="none";
+ document.getElementById("gameOver").style.display="none";
+
+ document.getElementById("hud").style.display="none";
+ document.getElementById("controls").style.display="none";
+
+ document.getElementById("menu").style.display="flex";
+
+ backMenu();
+}
+
+
+/* GAME OVER */
+
+function gameOver(){
+
+ running=false;
+
+ if(score>highScore){
+
+  highScore=score;
+
+  localStorage.setItem(
+   "duckHighScore",
+   highScore
+  );
+ }
+
+ document.getElementById("finalScore").textContent=
+  "Score: "+score+"   Best: "+highScore;
+
+ document.getElementById("gameOver").style.display="flex";
+
+ document.getElementById("hud").style.display="none";
+ document.getElementById("controls").style.display="none";
+}
+
+
+/* TOUCH */
+
+function touchButton(element,key){
+
+ element.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  keys[key]=true;
+ });
+
+ ["pointerup","pointercancel","pointerleave"].forEach(type=>{
+
+  element.addEventListener(type,e=>{
+   keys[key]=false;
+  });
+
+ });
+
+}
+
+touchButton(
+ document.getElementById("left"),
+ "left"
+);
+
+touchButton(
+ document.getElementById("right"),
+ "right"
+);
+
+
+/* KEYBOARD */
+
+addEventListener("keydown",e=>{
+
+ if(
+  e.key==="ArrowLeft"||
+  e.key.toLowerCase()==="a"
+ )
+ keys.left=true;
+
+ if(
+  e.key==="ArrowRight"||
+  e.key.toLowerCase()==="d"
+ )
+ keys.right=true;
+
+});
+
+
+addEventListener("keyup",e=>{
+
+ if(
+  e.key==="ArrowLeft"||
+  e.key.toLowerCase()==="a"
+ )
+ keys.left=false;
+
+ if(
+  e.key==="ArrowRight"||
+  e.key.toLowerCase()==="d"
+ )
+ keys.right=false;
+
+});
+
+
+/* GAME LOOP */
+
+function loop(){
+
+ if(!running)return;
+
+ if(!paused){
+
+  /* movement */
+
+  player.vx=
+   (keys.right?1:0)-
+   (keys.left?1:0);
+
+  player.x+=player.vx*5;
+
+  if(player.x<player.r)
+   player.x=player.r;
+
+  if(player.x>W-player.r)
+   player.x=W-player.r;
+
+
+  /* gravity */
+
+  player.vy+=0.35;
+  player.y+=player.vy;
+
+
+  /* platform collision */
+
+  for(const p of platforms){
+
+   if(
+    player.vy>0 &&
+    player.x>p.x &&
+    player.x<p.x+p.w &&
+    player.y+player.r>p.y &&
+    player.y+player.r<p.y+p.h+15
+   ){
+
+    player.y=p.y-player.r;
+    player.vy=-9;
+
+    /* spike damage */
+
+    if(
+     p.spike &&
+     !p.damaged
+    ){
+
+     p.damaged=true;
+
+     health--;
+
+     updateHUD();
+
+     if(health<=0){
+
+      gameOver();
+      return;
+     }
+
+    }
+
+   }
+
+  }
+
+
+  /* health pickups */
+
+  for(
+   let i=hearts.length-1;
+   i>=0;
+   i--
+  ){
+
+   const h=hearts[i];
+
+   const dx=player.x-h.x;
+   const dy=player.y-h.y;
+
+   if(
+    dx*dx+dy*dy<1200
+   ){
+
+    health=Math.min(
+     3,
+     health+1
+    );
+
+    hearts.splice(i,1);
+
+    updateHUD();
+   }
+
+  }
+
+
+  /* upward scrolling */
+
+  if(player.y<H*0.35){
+
+   let move=
+    H*0.35-player.y;
+
+   player.y=H*0.35;
+
+   platforms.forEach(p=>{
+    p.y+=move;
+   });
+
+   hearts.forEach(h=>{
+    h.y+=move;
+   });
+
+   score++;
+
+   updateHUD();
+  }
+
+
+  /* remove old platforms */
+
+  platforms=
+   platforms.filter(
+    p=>p.y<H+100
+   );
+
+  hearts=
+   hearts.filter(
+    h=>h.y<H+80
+   );
+
+
+  /* add new platforms */
+
+  let top=Infinity;
+
+  for(const p of platforms)
+   top=Math.min(top,p.y);
+
+  while(top>-100){
+
+   let y=top-95;
+
+   createPlatform(y);
+
+   top=y;
+  }
+
+
+  /* fell down */
+
+  if(player.y>H+100){
+
+   health--;
+
+   updateHUD();
+
+   if(health<=0){
+
+    gameOver();
+    return;
+   }
+
+   player.y=H*0.5;
+   player.vy=-6;
+  }
+
+ }
+
+ draw();
+
+ requestAnimationFrame(loop);
+}
+
+
+/* DRAW */
+
+function draw(){
+
+ /* sky */
+
+ let sky=
+  ctx.createLinearGradient(
+   0,0,0,H
+  );
+
+ sky.addColorStop(0,"#70d8ff");
+ sky.addColorStop(1,"#e8fbff");
+
+ ctx.fillStyle=sky;
+
+ ctx.fillRect(0,0,W,H);
+
+
+ /* clouds */
+
+ ctx.fillStyle="rgba(255,255,255,.75)";
+
+ for(let i=0;i<6;i++){
+
+  let x=
+   (i*180)%W;
+
+  let y=
+   70+(i%3)*100;
+
+  ctx.beginPath();
+
+  ctx.arc(x,y,25,0,Math.PI*2);
+  ctx.arc(x+28,y-10,32,0,Math.PI*2);
+  ctx.arc(x+60,y,25,0,Math.PI*2);
+
+  ctx.fill();
+ }
+
+
+ /* hills */
+
+ ctx.fillStyle="#9bdb9b";
+
+ ctx.beginPath();
+
+ ctx.moveTo(0,H);
+
+ for(
+  let x=0;
+  x<=W;
+  x+=80
+ ){
+
+  ctx.lineTo(
+   x,
+   H-90-
+   Math.sin(x*0.01)*35
+  );
+
+ }
+
+ ctx.lineTo(W,H);
+
+ ctx.fill();
+
+
+ /* platforms */
+
+ for(const p of platforms){
+
+  /* dirt */
+
+  ctx.fillStyle="#4b3425";
+
+  ctx.fillRect(
+   p.x,
+   p.y,
+   p.w,
+   p.h
+  );
+
+  /* grass */
+
+  ctx.fillStyle="#65a84b";
+
+  ctx.fillRect(
+   p.x,
+   p.y-4,
+   p.w,
+   5
+  );
+
+
+  /* spikes */
+
+  if(p.spike){
+
+   ctx.fillStyle="#555";
+
+   for(
+    let x=p.x+8;
+    x<p.x+p.w-5;
+    x+=18
+   ){
+
+    ctx.beginPath();
+
+    ctx.moveTo(x,p.y);
+
+    ctx.lineTo(x+7,p.y-16);
+
+    ctx.lineTo(x+14,p.y);
+
+    ctx.fill();
+   }
+
+  }
+
+ }
+
+
+ /* hearts */
+
+ for(const h of hearts){
+
+  ctx.font="25px Arial";
+  ctx.textAlign="center";
+  ctx.fillStyle="#e33";
+
+  ctx.fillText(
+   "♥",
+   h.x,
+   h.y+8
+  );
+
+ }
+
+
+ /* DUCK */
+
+ ctx.save();
+
+ ctx.translate(
+  player.x,
+  player.y
+ );
+
+ ctx.rotate(
+  player.vx*0.08
+ );
+
+ ctx.font="44px Arial";
+ ctx.textAlign="center";
+ ctx.textBaseline="middle";
+
+ ctx.fillText(
+  "🦆",
+  0,
+  0
+ );
+
+ ctx.restore();
+
+}
+
+</script>
+
+</body>
+</html>
